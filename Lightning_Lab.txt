@@ -1,0 +1,635 @@
+1. Upgrade the current version of kubernetes from 1.26.0 to 1.27.0 exactly using the kubeadm utility. Make sure that the upgrade is carried out one node at a time starting with the controlplane node. To minimize downtime, the deployment gold-nginx should be rescheduled on an alternate node before upgrading each node.
+
+Upgrade controlplane node first and drain node node01 before upgrading it. Pods for gold-nginx should run on the controlplane node subsequently.
+
+- Cluster Upgraded?
+- pods 'gold-nginx' running on controlplane?
+ 
+
+ㅇ  pod node 정보확인
+
+# node 정보 확인
+$ k get no
+NAME           STATUS   ROLES           AGE    VERSION
+controlplane   Ready    control-plane   106m   v1.26.0
+node01         Ready    <none>          106m   v1.26.0
+
+# pod 정보 확인
+$ k get po
+NAME                          READY   STATUS    RESTARTS   AGE
+gold-nginx-6c5b9dd56c-zsklg   1/1     Running   0          87s
+ 
+
+ㅇ kubeadm 버젼체크
+
+# kubeadm 버젼 확인
+$ kubeadm version
+kubeadm version: &version.Info{Major:"1", Minor:"26", GitVersion:"v1.26.0", GitCommit:"b46a3f887ca979b1a5d14fd39cb1af43e7e5d12d", GitTreeState:"clean", BuildDate:"2022-12-08T19:57:06Z", GoVersion:"go1.19.4", Compiler:"gc", Platform:"linux/amd64"}
+
+# kubeadm 버젼업
+$ apt-mark unhold kubeadm && \
+  apt-get update && apt-get install -y kubeadm=1.27.0-00 && \
+  apt-mark unhold kubeadm && apt-get update && apt-get install -y kubeadm=1.27.0-00 && \
+  apt-mark hold kubeadm
+ 
+
+ 
+
+ㅇ kubeadm upgrade plan
+
+$ kubeadm upgrade plan  v1.27.0
+[upgrade/config] Making sure the configuration is correct:
+[upgrade/config] Reading configuration from the cluster...
+[upgrade/config] FYI: You can look at this config file with 'kubectl -n kube-system get cm kubeadm-config -o yaml'
+[preflight] Running pre-flight checks.
+[upgrade] Running cluster health checks
+[upgrade] Fetching available versions to upgrade to
+[upgrade/versions] Cluster version: v1.26.0
+[upgrade/versions] kubeadm version: v1.27.0
+[upgrade/versions] Target version: v1.27.0
+[upgrade/versions] Latest version in the v1.26 series: v1.27.0
+W0621 16:36:24.736104   17010 compute.go:307] [upgrade/versions] could not find officially supported version of etcd for Kubernetes v1.27.0, falling back to the nearest etcd version (3.5.7-0)
+
+Components that must be upgraded manually after you have upgraded the control plane with 'kubeadm upgrade apply':
+COMPONENT   CURRENT       TARGET
+kubelet     2 x v1.26.0   v1.27.0
+
+Upgrade to the latest version in the v1.26 series:
+
+COMPONENT                 CURRENT   TARGET
+kube-apiserver            v1.26.0   v1.27.0
+kube-controller-manager   v1.26.0   v1.27.0
+kube-scheduler            v1.26.0   v1.27.0
+kube-proxy                v1.26.0   v1.27.0
+CoreDNS                   v1.9.3    v1.10.1
+etcd                      3.5.6-0   3.5.7-0
+
+You can now apply the upgrade by executing the following command:
+
+        kubeadm upgrade apply v1.27.0
+
+_____________________________________________________________________
+
+
+The table below shows the current state of component configs as understood by this version of kubeadm.
+Configs that have a "yes" mark in the "MANUAL UPGRADE REQUIRED" column require manual config upgrade or
+resetting to kubeadm defaults before a successful upgrade can be performed. The version to manually
+upgrade to is denoted in the "PREFERRED VERSION" column.
+
+API GROUP                 CURRENT VERSION   PREFERRED VERSION   MANUAL UPGRADE REQUIRED
+kubeproxy.config.k8s.io   v1alpha1          v1alpha1            no
+kubelet.config.k8s.io     v1beta1           v1beta1             no
+_____________________________________________________________________
+ 
+
+ ㅇ kubeadm upgrade apply v1.27.0
+
+$ sudo kubeadm upgrade apply v1.27.0
+[upgrade/config] Making sure the configuration is correct:
+[upgrade/config] Reading configuration from the cluster...
+[upgrade/config] FYI: You can look at this config file with 'kubectl -n kube-system get cm kubeadm-config -o yaml'
+[preflight] Running pre-flight checks.
+[upgrade] Running cluster health checks
+[upgrade/version] You have chosen to change the cluster version to "v1.27.0"
+[upgrade/versions] Cluster version: v1.26.0
+[upgrade/versions] kubeadm version: v1.27.0
+[upgrade] Are you sure you want to proceed? [y/N]: y
+~~~
+[bootstrap-token] Configured RBAC rules to allow Node Bootstrap tokens to get nodes
+[bootstrap-token] Configured RBAC rules to allow Node Bootstrap tokens to post CSRs in order for nodes to get long term certificate credentials
+[bootstrap-token] Configured RBAC rules to allow the csrapprover controller automatically approve CSRs from a Node Bootstrap Token
+[bootstrap-token] Configured RBAC rules to allow certificate rotation for all node client certificates in the cluster
+[addons] Applied essential addon: CoreDNS
+[addons] Applied essential addon: kube-proxy
+
+[upgrade/successful] SUCCESS! Your cluster was upgraded to "v1.27.0". Enjoy!
+
+[upgrade/kubelet] Now that your control plane is upgraded, please proceed with upgrading your kubelets if you haven't already done so.
+ 
+
+ㅇ kube 서버, node kube 버젼확인
+
+# kube 서버 버젼확인
+k version
+WARNING: This version information is deprecated and will be replaced with the output from kubectl version --short.  Use --output=yaml|json to get the full version.
+Client Version: version.Info{Major:"1", Minor:"26", GitVersion:"v1.26.0", GitCommit:"b46a3f887ca979b1a5d14fd39cb1af43e7e5d12d", GitTreeState:"clean", BuildDate:"2022-12-08T19:58:30Z", GoVersion:"go1.19.4", Compiler:"gc", Platform:"linux/amd64"}
+Kustomize Version: v4.5.7
+Server Version: version.Info{Major:"1", Minor:"27", GitVersion:"v1.27.0", GitCommit:"1b4df30b3cdfeaba6024e81e559a6cd09a089d65", GitTreeState:"clean", BuildDate:"2023-04-11T17:04:24Z", GoVersion:"go1.20.3", Compiler:"gc", Platform:"linux/amd64"}
+
+# node kube 버젼확인
+$ k get no -o wide
+NAME           STATUS   ROLES           AGE    VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE             KERNEL-VERSION   CONTAINER-RUNTIME
+controlplane   Ready    control-plane   130m   v1.26.0   192.35.68.3   <none>        Ubuntu 20.04.5 LTS   5.4.0-1106-gcp   containerd://1.6.6
+node01         Ready    <none>          129m   v1.26.0   192.35.68.6   <none>        Ubuntu 20.04.5 LTS   5.4.0-1106-gcp   containerd://1.6.6
+ 
+
+ㅇ 노드 드레인
+
+$ kubectl drain controlplane  --ignore-daemonsets
+node/controlplane cordoned
+Warning: ignoring DaemonSet-managed Pods: kube-system/kube-proxy-xkl5t, kube-system/weave-net-zdljf
+node/controlplane drained
+ 
+
+ㅇ kubelet과 kubectl 업그레이드
+
+$ apt-mark unhold kubelet kubectl && \
+  apt-get update && apt-get install -y kubelet=1.27.0-00 kubectl=1.27.0-00 && \
+  apt-mark hold kubelet kubectl
+kubelet was already not hold.
+kubectl was already not hold.
+ 
+
+ㅇ kubelet과 대몬 재시작
+
+$ sudo systemctl daemon-reload
+$ sudo systemctl restart kubelet
+ 
+
+ㅇ kubectl uncordon
+
+$ kubectl uncordon controlplane 
+node/controlplane uncordoned
+ 
+
+ 
+
+ 
+
+ㅁ node01 업그레이드 작업 시작
+# node01로 이동
+$ ssh node01
+
+# kubeadm 업그레이드
+$ apt-mark unhold kubeadm && \
+  apt-get update && apt-get install -y kubeadm=1.27.0-00 && \
+  apt-mark hold kubeadm
+
+# node upgrade
+$ sudo kubeadm upgrade node
+
+[upgrade] Reading configuration from the cluster...
+[upgrade] FYI: You can look at this config file with 'kubectl -n kube-system get cm kubeadm-config -o yaml'
+W0621 18:08:38.083755   16100 configset.go:177] error unmarshaling configuration schema.GroupVersionKind{Group:"kubelet.config.k8s.io", Version:"v1beta1", Kind:"KubeletConfiguration"}: strict decoding error: unknown field "containerRuntimeEndpoint"
+[preflight] Running pre-flight checks
+[preflight] Skipping prepull. Not a control plane node.
+[upgrade] Skipping phase. Not a control plane node.
+[kubelet-start] Writing kubelet configuration to file "/var/lib/kubelet/config.yaml"
+[upgrade] The configuration for this node was successfully updated!
+[upgrade] Now you should go ahead and upgrade the kubelet package using your package manager.
+ - exit로 controlplane 노드로 이동한다.
+
+ 
+
+ 
+
+ㅇ kubectl drain node01
+
+$ kubectl drain node01  --ignore-daemonsets
+node/node01 already cordoned
+Warning: ignoring DaemonSet-managed Pods: kube-system/kube-proxy-d668j, kube-system/weave-net-q27wj
+evicting pod kube-system/coredns-5d78c9869d-s875n
+evicting pod admin2406/deploy4-55554b4b4c-hcsz2
+evicting pod admin2406/deploy3-66785bc8f5-mfbj5
+evicting pod admin2406/deploy2-7b6d9445df-jr68s
+evicting pod admin2406/deploy1-5d88679d77-lm54k
+evicting pod default/gold-nginx-6c5b9dd56c-bt5r9
+evicting pod admin2406/deploy5-7cbf794564-rvglw
+evicting pod kube-system/coredns-5d78c9869d-626w8
+I0621 18:02:25.404839   19304 request.go:682] Waited for 1.026308306s due to client-side throttling, not priority and fairness, request: GET:https://controlplane:6443/api/v1/namespaces/kube-system/pods/coredns-5d78c9869d-s875n
+pod/deploy4-55554b4b4c-hcsz2 evicted
+pod/deploy1-5d88679d77-lm54k evicted
+pod/deploy3-66785bc8f5-mfbj5 evicted
+pod/deploy5-7cbf794564-rvglw evicted
+pod/coredns-5d78c9869d-s875n evicted
+pod/deploy2-7b6d9445df-jr68s evicted
+pod/gold-nginx-6c5b9dd56c-bt5r9 evicted
+pod/coredns-5d78c9869d-626w8 evicted
+node/node01 drained
+ 
+
+ 
+
+gold-nginx pod가 controlplane으로 이동해야 하지만 
+
+k get po gold-nginx-6c5b9dd56c-gz8pj -o yaml| grep taint
+    message: '0/2 nodes are available: 1 node(s) had untolerated taint {node-role.kubernetes.io/control-plane:
+테인트에 걸려 이동이 안되어 pending 상태이다. 톨로레이션을 추가해야함.
+
+ 
+
+ㅇ untaint
+
+$ kubectl taint nodes controlplane node-role.kubernetes.io/control-plane:NoSchedule-
+node/controlplane untainted
+
+# pod 이동 확인
+k get po -o wide
+NAME                          READY   STATUS    RESTARTS   AGE     IP           NODE           NOMINATED NODE   READINESS GATES
+gold-nginx-7c596797b7-r4fcf   1/1     Running   0          8m32s   10.244.0.7   controlplane   <none>           <none>
+ 
+
+ 
+
+ㅇ node01로 다시 이동 후 node01의  kubectl kubelet 업그레이드
+
+# kubectl kubelet 업그레이드
+$ apt-mark unhold kubelet kubectl && \
+apt-get update && apt-get install -y kubelet=1.27.0-00 kubectl=1.27.0-00 && \
+apt-mark hold kubelet kubectl
+
+Canceled hold on kubelet.
+Canceled hold on kubectl.
+Get:2 https://download.docker.com/linux/ubuntu focal InRelease [57.7 kB]                                                                                    
+Get:3 http://archive.ubuntu.com/ubuntu focal InRelease [265 kB]            
+~~~~~~~~~
+/usr/sbin/policy-rc.d returned 101, not running 'stop kubelet.service'
+Unpacking kubelet (1.27.0-00) over (1.26.0-00) ...
+Setting up kubectl (1.27.0-00) ...
+Setting up kubelet (1.27.0-00) ...
+/usr/sbin/policy-rc.d returned 101, not running 'start kubelet.service'
+kubelet set on hold.
+kubectl set on hold.
+ 
+
+ㅇ kubelet과 대몬 재시작
+
+$ sudo systemctl daemon-reload
+$ sudo systemctl restart kubelet
+ 
+
+ㅇ 업그레이드 확인
+
+node01 $ exit
+logout
+Connection to node01 closed.
+
+$ kubectl uncordon node01 
+node/node01 uncordoned
+
+controlplane $ k get no
+NAME           STATUS   ROLES           AGE    VERSION
+controlplane   Ready    control-plane   162m   v1.27.0
+node01         Ready    <none>          161m   v1.27.0
+
+$ k get po
+NAME                          READY   STATUS    RESTARTS   AGE
+gold-nginx-6c5b9dd56c-xcc54   1/1     Running   0          29m
+ 
+
+ㅇ 참조 kube Doc: Upgrading kubeadm clusters
+
+ 
+
+ 
+
+2. Print the names of all deployments in the admin2406 namespace in the following format:
+
+DEPLOYMENT CONTAINER_IMAGE READY_REPLICAS NAMESPACE
+
+<deployment name> <container image used> <ready replica count> <Namespace>
+. The data should be sorted by the increasing order of the deployment name.
+
+Example:
+DEPLOYMENT CONTAINER_IMAGE READY_REPLICAS NAMESPACE
+deploy0 nginx:alpine 1 admin2406
+Write the result to the file /opt/admin2406_data.
+
+Task completed?
+ 
+
+ 
+
+ㅇ deployment 확인
+
+$ kubectl get deployment -n admin2406 
+NAME      READY   UP-TO-DATE   AVAILABLE   AGE
+deploy1   1/1     1            1           40m
+deploy2   1/1     1            1           40m
+deploy3   1/1     1            1           40m
+deploy4   1/1     1            1           40m
+deploy5   1/1     1            1           40m
+ 
+
+ 
+
+ㅇ json형식 확인
+
+$ kubectl get deployment deploy1 -n admin2406 -o json
+{
+    "apiVersion": "apps/v1",
+    "kind": "Deployment",
+    "metadata": {
+        "annotations": {
+            "deployment.kubernetes.io/revision": "1"
+        },
+        "creationTimestamp": "2023-06-22T20:54:40Z",
+        "generation": 1,
+        "labels": {
+            "app": "deploy1"
+        },
+        "name": "deploy1",
+        "namespace": "admin2406",
+        "resourceVersion": "9469",
+        "uid": "9284b88a-531d-42bf-b741-a65b8a5d5043"
+    },
+    "spec": {
+        "progressDeadlineSeconds": 600,
+        "replicas": 1,
+        "revisionHistoryLimit": 10,
+        "selector": {
+            "matchLabels": {
+                "app": "deploy1"
+            }
+        },
+        "strategy": {
+            "rollingUpdate": {
+                "maxSurge": "25%",
+                "maxUnavailable": "25%"
+            },
+            "type": "RollingUpdate"
+        },
+        "template": {
+            "metadata": {
+                "creationTimestamp": null,
+                "labels": {
+                    "app": "deploy1"
+                }
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "image": "nginx",
+                        "imagePullPolicy": "Always",
+                        "name": "nginx",
+                        "resources": {},
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File"
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "restartPolicy": "Always",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "terminationGracePeriodSeconds": 30
+            }
+        }
+    },
+    "status": {
+        "availableReplicas": 1,
+        "conditions": [
+            {
+                "lastTransitionTime": "2023-06-22T20:54:40Z",
+                "lastUpdateTime": "2023-06-22T20:54:43Z",
+                "message": "ReplicaSet \"deploy1-5d88679d77\" has successfully progressed.",
+                "reason": "NewReplicaSetAvailable",
+                "status": "True",
+                "type": "Progressing"
+            },
+            {
+                "lastTransitionTime": "2023-06-22T21:25:05Z",
+                "lastUpdateTime": "2023-06-22T21:25:05Z",
+                "message": "Deployment has minimum availability.",
+                "reason": "MinimumReplicasAvailable",
+                "status": "True",
+                "type": "Available"
+            }
+        ],
+        "observedGeneration": 1,
+        "readyReplicas": 1,
+        "replicas": 1,
+        "updatedReplicas": 1
+    }
+}
+ 
+
+ㅇ json 출력 및  /opt/admin2406_data 파일 출력
+
+$ kubectl -n admin2406 get deployment \
+-o custom-columns=DEPLOYMENT:.metadata.name,\
+CONTAINER_IMAGE:.spec.template.spec.containers[].image,\
+READY_REPLICAS:.status.readyReplicas,\
+NAMESPACE:.metadata.namespace\
+ --sort-by=.metadata.name > /opt/admin2406_data
+
+ 
+
+ 
+
+ㅇ 참조
+
+ - custom-columns : https://kubernetes.io/docs/reference/kubectl/#custom-columns
+
+ - Sorting list objects : https://kubernetes.io/docs/reference/kubectl/#sorting-list-objects
+
+ 
+
+3. A kubeconfig file called admin.kubeconfig has been created in /root/CKA. There is something wrong with the configuration. Troubleshoot and fix it.
+- Fix /root/CKA/admin.kubeconfig
+ 
+
+ㅇ /root/CKA/admin.kubeconfig 파일 확인
+
+$ cat /root/CKA/admin.kubeconfig
+~~~
+server: https://controlplane:4380
+  name: kubernetes
+~~~
+- kube-apiserver에 붙기 위한 port가 4380으로 잘못 설정되어, 해당 부분을 6443으로 변경해야함.
+
+ 
+
+ 
+
+4. Create a new deployment called nginx-deploy, with image nginx:1.16 and 1 replica. 
+     Next upgrade the deployment to version 1.17 using rolling update.- Image: nginx:1.16- Task: Upgrade the version of the deployment to 1:17
+ 
+ 
+
+ㅇ nginx.yaml 파일 생성
+
+# 샘플 yaml 생성
+$ k create deployment nginx-deploy --image=nginx:1.16 --replicas=1 --dry-run=client -o yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: nginx-deploy
+  name: nginx-deploy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-deploy
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: nginx-deploy
+    spec:
+      containers:
+      - image: nginx:1.16
+        name: nginx
+        resources: {}
+status: {}
+
+
+# 생성
+$ k apply -f nginx_role.yaml
+deployment.apps/nginx-deploy created
+ 
+
+$ kubectl set image deployment.v1.apps/nginx-deploy nginx=nginx:1.17
+deployment.apps/nginx-deploy image updated
+
+
+참고:
+Updating a Deployment : https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#updating-a-deployment
+
+ 
+
+ 
+
+5.A new deployment called alpha-mysql has been deployed in the alpha namespace. However, the pods are not running. Troubleshoot and fix the issue. The deployment should make use of the persistent volume alpha-pv to be mounted at /var/lib/mysql and should use the environment variable MYSQL_ALLOW_EMPTY_PASSWORD=1 to make use of an empty root password.
+- Important: Do not alter the persistent volume.
+- Troubleshoot and fix the issues
+ 
+
+# pod 상태확인
+$ kubectl describe -n alpha pod/alpha-mysql-5b7b8988c4-b7vfw
+~~~
+Events:
+  Type     Reason            Age                  From               Message
+  ----     ------            ----                 ----               -------
+  Warning  FailedScheduling  4m10s (x8 over 34m)  default-scheduler  0/2 nodes are available: persistentvolumeclaim "mysql-alpha-pvc" not found. preemption: 0/2 nodes are available: 2 No preemption victims found for incoming pod..
+~~~
+"mysql-alpha-pvc" not found.
+
+
+# pvc 상태 확인 : mysql-alpha-pvc가 목록에 없다.
+$ k get pvc -n alpha 
+NAME          STATUS    VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+alpha-claim   Pending                                      slow-storage   41m
+
+
+# pvc.yaml 작성
+$ cat pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-alpha-pvc
+  namespace: alpha
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: slow
+
+
+# pvc 생성
+$ k apply -f pvc.yaml 
+persistentvolumeclaim/mysql-alpha-pvc created
+
+# 확인
+$ k get po -n alpha 
+NAME                           READY   STATUS    RESTARTS   AGE
+alpha-mysql-5b7b8988c4-b7vfw   1/1     Running   0          54m
+ 
+
+참고
+
+퍼시스턴트볼륨클레임 생성하기
+
+ 
+
+ 
+
+6. Take the backup of ETCD at the location /opt/etcd-backup.db on the controlplane node.
+- Troubleshoot and fix the issues
+ 
+
+ㅇ 샘플 코드 수집
+
+# etcd back 검색, Snapshot using etcdctl options 
+ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 \
+  --cacert=<trusted-ca-file> --cert=<cert-file> --key=<key-file> \
+  snapshot save <backup-file-location>
+
+
+# 설정정보 확인
+kubectl describe pod/etcd-controlplane -n kube-system | grep '\-\-'
+      --advertise-client-urls=https://192.5.120.11:2379
+      --cert-file=/etc/kubernetes/pki/etcd/server.crt
+      --client-cert-auth=true
+      --data-dir=/var/lib/etcd
+      --experimental-initial-corrupt-check=true
+      --experimental-watch-progress-notify-interval=5s
+      --initial-advertise-peer-urls=https://192.5.120.11:2380
+      --initial-cluster=controlplane=https://192.5.120.11:2380
+      --key-file=/etc/kubernetes/pki/etcd/server.key
+      --listen-client-urls=https://127.0.0.1:2379,https://192.5.120.11:2379
+      --listen-metrics-urls=http://127.0.0.1:2381
+      --listen-peer-urls=https://192.5.120.11:2380
+      --name=controlplane
+      --peer-cert-file=/etc/kubernetes/pki/etcd/peer.crt
+      --peer-client-cert-auth=true
+      --peer-key-file=/etc/kubernetes/pki/etcd/peer.key
+      --peer-trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
+      --snapshot-count=10000
+      --trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
+
+
+# 명령구문 작성
+$ ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 \
+   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+   --cert=/etc/kubernetes/pki/etcd/server.crt \
+   --key=/etc/kubernetes/pki/etcd/server.key \
+   snapshot save /opt/etcd-backup.db
+Snapshot saved at /opt/etcd-backup.db
+ 
+
+참조
+
+Snapshot using etcdctl options
+
+ 
+
+7. Create a pod called secret-1401 in the admin1401 namespace using the busybox image.
+The container within the pod should be called secret-admin and should sleep for 4800 seconds.
+
+The container should mount a read-only secret volume called secret-volume at the path /etc/secret-volume. The secret being mounted has already been created for you and is called dotfile-secret.
+
+Pod created correctly?
+ 
+
+# 생성 yaml파일 
+$ k run secret-1401 --image=busybox --dry-run=client -o=yaml -n admin1401 > bosy.yaml
+
+
+# 완성
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: secret-1401
+  name: secret-1401
+  namespace: admin1401
+spec:
+  containers:
+  - image: busybox
+    name: secret-1401
+    command: ['sh', '-c','sleep 4800']
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+
+# 생성
+k apply -f bosy.yaml -n admin1401
+pod/secret-1401 created
