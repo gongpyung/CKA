@@ -1,0 +1,588 @@
+1. Take a backup of the etcd cluster and save it to /opt/etcd-backup.db
+
+ ㅇ kube doc: etcd backup 검색 > Backing up an etcd cluster
+
+# kube doc: etcd backup > Backing up an etcd cluster 참조
+ETCDCTL_API=3 etcdctl --endpoints $ENDPOINT snapshot save snapshotdb
+
+# etcd snapshot save help 참조
+$ ETCDCTL_API=3 etcdctl snapshot save -h
+NAME:
+        snapshot save - Stores an etcd node backend snapshot to a given file
+
+USAGE:
+        etcdctl snapshot save <filename>
+
+GLOBAL OPTIONS:
+      --cacert=""                               verify certificates of TLS-enabled secure servers using this CA bundle
+      --cert=""                                 identify secure client using this TLS certificate file
+      --command-timeout=5s                      timeout for short running command (excluding dial timeout)
+      --debug[=false]                           enable client-side debug logging
+      --dial-timeout=2s                         dial timeout for client connections
+  -d, --discovery-srv=""                        domain name to query for SRV records describing cluster endpoints
+      --endpoints=[127.0.0.1:2379]              gRPC endpoints
+      --hex[=false]                             print byte strings as hex encoded strings
+      --insecure-discovery[=true]               accept insecure SRV records describing cluster endpoints
+      --insecure-skip-tls-verify[=false]        skip server certificate verification
+      --insecure-transport[=true]               disable transport security for client connections
+      --keepalive-time=2s                       keepalive time for client connections
+      --keepalive-timeout=6s                    keepalive timeout for client connections
+      --key=""                                  identify secure client using this TLS key file
+      --user=""                                 username[:password] for authentication (prompt if password is not supplied)
+  -w, --write-out="simple"                      set the output format (fields, json, protobuf, simple, table)
+  
+# endpoint 확인
+$ cat /etc/kubernetes/manifests/etcd.yaml | grep listen
+- --listen-client-urls=https://127.0.0.1:2379,https://192.1.71.11:2379
+  
+# 인증서 정보 확인
+$ cat /etc/kubernetes/manifests/etcd.yaml | grep file
+    - --cert-file=/etc/kubernetes/pki/etcd/server.crt
+    - --key-file=/etc/kubernetes/pki/etcd/server.key
+    - --peer-cert-file=/etc/kubernetes/pki/etcd/peer.crt
+    - --peer-key-file=/etc/kubernetes/pki/etcd/peer.key
+    - --peer-trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
+    - --trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
+    seccompProfile:
+    
+    
+# 명령문 작성
+$ ETCDCTL_API=3 etcdctl --endpoints 127.0.0.1:2379 snapshot save /opt/etcd-backup.db \
+ --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+ --cert=/etc/kubernetes/pki/etcd/server.crt \
+ --key=/etc/kubernetes/pki/etcd/server.key
+Snapshot saved at /opt/etcd-backup.db
+
+
+2. Create a Pod called redis-storage with image: redis:alpine with a Volume of type emptyDir that lasts for the life of the Pod.
+ - Pod named 'redis-storage' created
+ - Pod 'redis-storage' uses Volume type of emptyDir
+ - Pod 'redis-storage' uses volumeMount with mountPath = /data/redis
+
+# 명령문 작성
+$ k run redis-storage --image=redis:alpine --dry-run=client -o yaml > redis-storage.yaml
+$ cat redis-storage.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: redis-storage
+  name: redis-storage
+spec:
+  containers:
+  - image: redis:alpine
+    name: redis-storage
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+
+# emptyDir 문법 검색 > (emptyDir configuration example)
+  volumes:
+  - name: cache-volume
+    emptyDir:
+      sizeLimit: 500Mi
+
+# redis-storage.yaml 완성
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: redis-storage
+  name: redis-storage
+spec:
+  containers:
+  - image: redis:alpine
+    name: redis-storage
+    resources: {}
+    volumeMounts:
+    - mountPath: /data/redis
+      name: cache-volume
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+  volumes:
+  - name: cache-volume
+    emptyDir: {}
+status: {}
+
+# create
+$ k create -f redis-storage.yaml 
+pod/redis-storage created
+ ㅇ kube doc 검색: pod volume > emptyDir.  emptyDir configuration example 
+
+ 
+
+ 
+
+3. Create a new pod called super-user-pod with image busybox:1.28. Allow the pod to be able to set system_time.
+ - The container should sleep for 4800 seconds. 
+
+# sample yaml 생성
+$ k run super-user-pod --image=busybox:1.28 --dry-run=client -o yaml > super-user-pod.yaml
+$ cat super-user-pod.yaml 
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: super-user-pod
+  name: super-user-pod
+spec:
+  containers:
+  - image: busybox:1.28
+    name: super-user-pod
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+
+# security 참조 검색. security capability > Set the security context for a Container
+apiVersion: v1
+kind: Pod
+metadata:
+  name: security-context-demo-4
+spec:
+  containers:
+  - name: sec-ctx-4
+    image: gcr.io/google-samples/node-hello:1.0
+    securityContext:
+      capabilities:
+        add: ["NET_ADMIN", "SYS_TIME"]
+
+
+# yaml 완성
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: super-user-pod
+  name: super-user-pod
+spec:
+  containers:
+  - image: busybox:1.28
+    name: super-user-pod
+    command: ["sleep", "4800"]
+    securityContext:
+      capabilities:
+        add: ["SYS_TIME"]
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+
+# create
+$ k create -f super-user-pod.yaml 
+pod/super-user-pod created
+
+# pod 확인 및 describe에서 command sleep 적용확인
+ ㅇ 참조 
+ - Set capabilities for a Container
+
+ 
+
+ 
+
+4. A pod definition file is created at /root/CKA/use-pv.yaml. 
+Make use of this manifest file and mount the persistent volume called pv-1.
+Ensure the pod is running and the PV is bound.
+ - mountPath: /data
+
+# yaml 파일 확인
+$ cat  /root/CKA/use-pv.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: use-pv
+  name: use-pv
+spec:
+  containers:
+  - image: nginx
+    name: use-pv
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+
+# pv 생성 여부 확인
+$ k get pv
+NAME   CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS      CLAIM   STORAGECLASS   REASON   AGE
+pv-1   10Mi       RWO            Retain           Available                                   7m30s
+
+
+# pvc 생성 여부 확인
+$ k get pvc
+No resources found in default namespace.
+
+
+# sample yaml 탐색
+# kube doc: pvc > Persistent Volumes > PersistentVolumeClaims 선택
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: myclaim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: 8Gi
+  
+  
+# pvc.yaml 작성
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: my-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Mi
+  
+# create
+$ k create -f pvc.yaml 
+persistentvolumeclaim/my-pvc created
+
+  
+# 확인
+$ k get pvc
+NAME     STATUS   VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+my-pvc   Bound    pv-1     10Mi       RWO                           4s  
+
+
+# Claims As Volumes 참조
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mypod
+spec:
+  containers:
+    - name: myfrontend
+      image: nginx
+      volumeMounts:
+      - mountPath: "/var/www/html"
+        name: mypd
+  volumes:
+    - name: mypd
+      persistentVolumeClaim:
+        claimName: myclaim
+
+
+# /root/CKA/use-pv.yaml 수정
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: use-pv
+  name: use-pv
+spec:
+  containers:
+  - image: nginx
+    name: use-pv
+    resources: {}
+    volumeMounts:
+    - mountPath: "/data"
+      name: mypd
+  volumes:
+    - name: mypd
+      persistentVolumeClaim:
+        claimName: my-pvc
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+ㅇ 참조
+
+ - Persistent Volumes
+
+ - Claims As Volumes
+
+ 
+
+ 
+
+5. Create a new deployment called nginx-deploy, with image nginx:1.16 
+and 1 replica. Next upgrade the deployment to version 1.17 using rolling update.
+
+# deployment 생성
+$ k create deployment nginx-deploy --image=nginx:1.16 --replicas=1
+deployment.apps/nginx-deploy created
+
+
+# pod 확인
+$ k get pod
+NAME                            READY   STATUS    RESTARTS   AGE
+nginx-deploy-7dc9dd795f-jdf2z   1/1     Running   0          41s
+
+
+# upgrage 시작
+# set image help 참조
+$ k set image --help
+~~
+# Set a deployment's nginx container image to 'nginx:1.9.1', and its busybox container image to 'busybox'
+  kubectl set image deployment/nginx busybox=busybox nginx=nginx:1.9.1
+~~
+
+
+# 명령문 작성 및 실행
+$ kubectl set image deployment/nginx-deploy nginx=nginx:1.17
+deployment.apps/nginx-deploy image updated
+
+# 확인
+$ k describe deployments.apps nginx-deploy | grep 1.17
+    Image:        nginx:1.17
+ 
+
+ 
+
+ 
+
+6. Create a new user called john. Grant him access to the cluster.
+John should have permission to create, list, get, update and delete pods in the development namespace .
+The private key exists in the location: /root/CKA/john.key  and csr at /root/CKA/john.csr.
+ - Important Note: As of kubernetes 1.19, the CertificateSigningRequest object expects a signerName.
+ - Please refer the documentation to see an example. The documentation tab is available at the top right of terminal.
+
+# Create a CertificateSigningRequest 참조
+apiVersion: certificates.k8s.io/v1
+kind: CertificateSigningRequest
+metadata:
+  name: myuser
+spec:
+  request: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0KTUlJQ1ZqQ0NBVDRDQVFBd0VURVBNQTBHQTFVRUF3d0dZVzVuWld4aE1JSUJJakFOQmdrcWhraUc5dzBCQVFFRgpBQU9DQVE4QU1JSUJDZ0tDQVFFQTByczhJTHRHdTYxakx2dHhWTTJSVlRWMDNHWlJTWWw0dWluVWo4RElaWjBOCnR2MUZtRVFSd3VoaUZsOFEzcWl0Qm0wMUFSMkNJVXBGd2ZzSjZ4MXF3ckJzVkhZbGlBNVhwRVpZM3ExcGswSDQKM3Z3aGJlK1o2MVNrVHF5SVBYUUwrTWM5T1Nsbm0xb0R2N0NtSkZNMUlMRVI3QTVGZnZKOEdFRjJ6dHBoaUlFMwpub1dtdHNZb3JuT2wzc2lHQ2ZGZzR4Zmd4eW8ybmlneFNVekl1bXNnVm9PM2ttT0x1RVF6cXpkakJ3TFJXbWlECklmMXBMWnoyalVnald4UkhCM1gyWnVVV1d1T09PZnpXM01LaE8ybHEvZi9DdS8wYk83c0x0MCt3U2ZMSU91TFcKcW90blZtRmxMMytqTy82WDNDKzBERHk5aUtwbXJjVDBnWGZLemE1dHJRSURBUUFCb0FBd0RRWUpLb1pJaHZjTgpBUUVMQlFBRGdnRUJBR05WdmVIOGR4ZzNvK21VeVRkbmFjVmQ1N24zSkExdnZEU1JWREkyQTZ1eXN3ZFp1L1BVCkkwZXpZWFV0RVNnSk1IRmQycVVNMjNuNVJsSXJ3R0xuUXFISUh5VStWWHhsdnZsRnpNOVpEWllSTmU3QlJvYXgKQVlEdUI5STZXT3FYbkFvczFqRmxNUG5NbFpqdU5kSGxpT1BjTU1oNndLaTZzZFhpVStHYTJ2RUVLY01jSVUyRgpvU2djUWdMYTk0aEpacGk3ZnNMdm1OQUxoT045UHdNMGM1dVJVejV4T0dGMUtCbWRSeEgvbUNOS2JKYjFRQm1HCkkwYitEUEdaTktXTU0xMzhIQXdoV0tkNjVoVHdYOWl4V3ZHMkh4TG1WQzg0L1BHT0tWQW9FNkpsYWFHdTlQVmkKdjlOSjVaZlZrcXdCd0hKbzZXdk9xVlA3SVFjZmg3d0drWm89Ci0tLS0tRU5EIENFUlRJRklDQVRFIFJFUVVFU1QtLS0tLQo=
+  signerName: kubernetes.io/kube-apiserver-client
+  expirationSeconds: 86400  # one day
+  usages:
+  - client auth
+
+
+# csr base64 decord
+$ cat john.csr | base64 | tr -d "\n"
+
+
+# john-csr.yaml 완성
+apiVersion: certificates.k8s.io/v1
+kind: CertificateSigningRequest
+metadata:
+  name: john-developer
+spec:
+  request: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0KTUlJQ1ZEQ0NBVHdDQVFBd0R6RU5NQXNHQTFVRUF3d0VhbTlvYmpDQ0FTSXdEUVlKS29aSWh2Y05BUUVCQlFBRApnZ0VQQURDQ0FRb0NnZ0VCQU9NQkIreHhjd0lOMDkwZUhvc1dmSDVWSmkzQzZTK0l3KzNzaW1idTEyOHFjZk9XCmd0SVJobERYT3hFdGZQUVJPbnl6akIvdTI0OFlML3hZdWptVk9jL3dEUDdZdnBjS1dsa3MrNDhjZUE4bkFwRk8KNWZZRFVlLzlFQ2ExWWtJTGs3ZCtWUExaS016TS9xOHI4WVBIR1NtV1hWUkpGWXBBN2ZZb3BmeFd0WmlrRVFRZgpsUUlUNFBVQUs5cjBGUzNIcFp1dDNsUXJqcnArWUtxczZVb3R5aUpvVTlRK3krMUpqM0lFdXlBTzJwbkFqcXV3CktHeExaamgyQ2lKcThjaUhMeFNVMzdNSkxqRWVKMnRGdkNjNEpmOGk1K1Bad0l2aE1uY1BybGtrSHc0MXVaSGMKTERWWWcwSUNPT25sSjBrWDNaY285bXN4a1FveXdiVnFIVURCN2tFQ0F3RUFBYUFBTUEwR0NTcUdTSWIzRFFFQgpDd1VBQTRJQkFRQ09CRzhHQmxWYWE0dXEzL0pNdTMwenJqLzdSb0F0U0pKNVQ5MWVlVVpNdEdlaTMrL09PbkpFCmJwckFLM3F1NWlRb1hLSnliYXd1ODFXNUY4U2xSdzZUZWYvV04xZVVUN0lTN0V2VGlVVVlqWmNKWmdsTk5yeFUKZkNMSWdzMzZINUppeGhjRzFrKzJXTllIRlpQZFBUWG5IdCs4V29FYnFSL3RWemwzU2RFb0xJTHVXL0IyRE1yZwoxRVZXVEtCQ2dLWUp2YVg2RENBRENTb3J3VzJhdFR3akhLbk4xOWM3aXRlY1FKcHU1bytyUS9ZOFZ0Nm1TdXJVClpyUFBVUjFPTDg1Uk5xQWcwU05pdlZZOXpzclNaTWZUUlR1RUNwT2lRbmNxcjN3bzMzM3VBanFHS3Y0bHozNTcKUnVvVWU0aUJmNTloMGhjSmNXTERFTGZ3NjZ2WEtlNlAKLS0tLS1FTkQgQ0VSVElGSUNBVEUgUkVRVUVTVC0tLS0tCg==
+  signerName: kubernetes.io/kube-apiserver-client
+  expirationSeconds: 86400  # one day
+  usages:
+  - client auth
+
+
+# create
+$ k create -f john-csr.yaml 
+certificatesigningrequest.certificates.k8s.io/john-developer created
+
+
+# 확인 및 approve
+$ k get csr
+NAME             AGE   SIGNERNAME                                    REQUESTOR                  REQUESTEDDURATION   CONDITION
+csr-2sktz        85m   kubernetes.io/kube-apiserver-client-kubelet   system:bootstrap:elv81r    <none>              Approved,Issued
+csr-8w65f        85m   kubernetes.io/kube-apiserver-client-kubelet   system:node:controlplane   <none>              Approved,Issued
+john-developer   66s   kubernetes.io/kube-apiserver-client           kubernetes-admin           24h                 Pending
+
+$ k certificate approve john-developer
+certificatesigningrequest.certificates.k8s.io/john-developer approved
+ㅇ 참조
+
+ - Create a CertificateSigningRequest
+
+ 
+
+# role 생성과정
+# 참조 구문 검색
+$ k create role --help
+~~
+# Create a role named "foo" with SubResource specified
+kubectl create role foo --verb=get,list,watch --resource=pods,pods/status
+~~
+
+
+# role 명령문 작성
+kubectl create role developer --verb=create,get,list,update,delete --resource=pods -n development
+
+
+# role 적용확인
+$ k describe role -n development developer 
+Name:         developer
+Labels:       <none>
+Annotations:  <none>
+PolicyRule:
+  Resources  Non-Resource URLs  Resource Names  Verbs
+  ---------  -----------------  --------------  -----
+  pods       []                 []              [create get list update delete]
+  
+  
+# Access 권한 확인 시 참조
+$ k auth can-i get --help
+~~
+# Check to see if I can get the job named "bar" in namespace "foo"
+kubectl auth can-i list jobs.batch/bar -n foo
+~~
+
+# Access 권한 확인
+$ k auth can-i get pods -n development --as john
+no
+$ k auth can-i create pods  -n development --as john
+no
+
+
+# rolebinding help
+$ k create rolebinding --help
+~~
+# Create a role binding for user1, user2, and group1 using the admin cluster role
+kubectl create rolebinding admin --clusterrole=admin --user=user1 --user=user2 --group=group1
+~~
+
+
+# rolebinding 작성 및 실행
+$ kubectl create rolebinding john-developer --role=developer --user=john -n development 
+rolebinding.rbac.authorization.k8s.io/john-developer created
+
+
+# 생성 확인
+k get rolebindings.rbac.authorization.k8s.io -n development 
+NAME             ROLE             AGE
+john-developer   Role/developer   31s
+
+# 권한 확인
+$ k auth can-i get pods -n development --as john
+yes
+$ k auth can-i create pods -n development --as john
+yes
+$ k auth can-i watch pods -n development --as john
+no
+ 
+
+ 
+
+7. Create a nginx pod called nginx-resolver using image nginx, 
+expose it internally with a service called nginx-resolver-service. 
+Test that you are able to look up the service and pod names from within the cluster. 
+Use the image: busybox:1.28 for dns lookup. 
+Record results in /root/CKA/nginx.svc and /root/CKA/nginx.pod
+
+# nginx-resolver 생성
+$ k run nginx-resolver --image=nginx
+pod/nginx-resolver created
+
+
+# pod 생성확인
+$ k get po
+NAME             READY   STATUS    RESTARTS   AGE
+nginx-resolver   1/1     Running   0          3m6s
+
+
+# 서비스 연결
+$ k expose pod nginx-resolver --name=nginx-resolver-service --port=80
+service/nginx-resolver-service exposed
+
+
+# 서비스 확인
+$ k get svc
+NAME                     TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
+kubernetes               ClusterIP   10.96.0.1       <none>        443/TCP   79m
+nginx-resolver-service   ClusterIP   10.111.232.12   <none>        80/TCP    68s
+
+
+# busybox 생성
+$ k run busybox --image=busybox:1.28 -- sleep 4000
+pod/busybox created
+
+
+# nslookup 실행
+$ k exec busybox -- nslookup nginx-resolver-service > /root/CKA/nginx.svc
+
+$ cat /root/CKA/nginx.svc 
+Server:    10.96.0.10
+Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
+
+Name:      nginx-resolver-service
+Address 1: 10.111.232.12 nginx-resolver-service.default.svc.cluster.local
+
+
+# pod dns 정보 확인을 위한 IP 체크
+$ k get po -o wide
+NAME             READY   STATUS    RESTARTS   AGE    IP             NODE     NOMINATED NODE   READINESS GATES
+busybox          1/1     Running   0          5m9s   10.244.192.2   node01   <none>           <none>
+nginx-resolver   1/1     Running   0          10m    10.244.192.1   node01   <none>           <none>
+
+# DNS 체크 
+# 참조 doc: Pods A/AAAA records
+# 172-17-0-3.default.pod.cluster.local
+$ k exec busybox -- nslookup 10-244-192-1.default.pod.cluster.local
+Server:    10.96.0.10
+Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
+
+Name:      10-244-192-1.default.pod.cluster.local
+Address 1: 10.244.192.1 10-244-192-1.nginx-resolver-service.default.svc.cluster.local
+
+
+$ k exec busybox -- nslookup 10-244-192-1.default.pod.cluster.local > /root/CKA/nginx.svc
+ㅇ 참조 doc : Pods A/AAAA records 
+
+ 
+
+ 
+
+8. Create a static pod on node01 called nginx-critical with image nginx 
+and make sure that it is recreated/restarted automatically in case of a failure.
+ - Use /etc/kubernetes/manifests as the Static Pod path for example.
+
+# 참조 yaml 생성
+$ kubectl run nginx-critical --image=nginx --restart=Always --dry-run=client -o yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: nginx-critical
+  name: nginx-critical
+spec:
+  containers:
+  - image: nginx
+    name: nginx-critical
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+
+$ cat > /etc/kubernetes/manifests/nginx-critical.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: nginx-critical
+  name: nginx-critical
+spec:
+  containers:
+  - image: nginx
+    name: nginx-critical
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+^C
+
+$ k get po
+NAME                          READY   STATUS    RESTARTS   AGE
+busybox                       1/1     Running   0          14m
+nginx-critical-controlplane   1/1     Running   0          10s
+nginx-resolver                1/1     Running   0          19m
