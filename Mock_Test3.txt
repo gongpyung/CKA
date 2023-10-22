@@ -1,0 +1,582 @@
+1. Create a new service account with the name pvviewer. 
+Grant this Service account access to list all PersistentVolumes in the cluster by creating an appropriate cluster role called pvviewer-role and ClusterRoleBinding called pvviewer-role-binding.
+Next, create a pod called pvviewer with the image: redis and serviceAccount: pvviewer in the default namespace.
+
+ 
+
+ㅇ  service account 생성
+
+# service account 생성
+$ kubectl create serviceaccount pvviewer
+serviceaccount/pvviewer created
+
+# 생성 확인
+controlplane ~ ➜  k get sa
+NAME       SECRETS   AGE
+default    0         58m
+pvviewer   0         7s
+ 
+
+ㅇ cluster role 생성
+
+# clusterrole 구문확인
+$ k create clusterrole --help
+Create a cluster role.
+
+Examples:
+  # Create a cluster role named "pod-reader" that allows user to perform "get", "watch" and "list" on pods
+  kubectl create clusterrole pod-reader --verb=get,list,watch --resource=pods
+  
+# resource name 확인
+$ k api-resources | grep persistent
+persistentvolumeclaims            pvc          v1                                     true         PersistentVolumeClaim
+persistentvolumes                 pv           v1                                     false        PersistentVolume
+
+# cluster role 구문생성
+$ k create clusterrole pvviewer-role --verb=list --resource=persistentvolumes
+clusterrole.rbac.authorization.k8s.io/pvviewer-role created
+
+# 생성확인
+$ k get clusterrole pvviewer-role 
+NAME            CREATED AT
+pvviewer-role   2023-06-11T21:19:57Z
+ 
+
+ㅇ cluster rolebinding
+
+# cluster rolebinding 구문확인
+k create clusterrolebinding --help
+Create a cluster role binding for a particular cluster role.
+
+Examples:
+  # Create a cluster role binding for user1, user2, and group1 using the cluster-admin cluster role
+  kubectl create clusterrolebinding cluster-admin --clusterrole=cluster-admin --user=user1 --user=user2 --group=group1
+
+# 구문생성
+# 처음 복사할 때에는 앞에 '#'을 먼저 넣어주어 샘플 구문이 작동하지 않게 방어한다.
+$  kubectl create clusterrolebinding pvviewer-role-binding --clusterrole=pvviewer-role --serviceaccount=default:pvviewer
+clusterrolebinding.rbac.authorization.k8s.io/pvviewer-role-binding created
+
+# 생성확인
+$ k describe clusterrolebindings.rbac.authorization.k8s.io pvviewer-role-binding 
+Name:         pvviewer-role-binding
+Labels:       <none>
+Annotations:  <none>
+Role:
+  Kind:  ClusterRole
+  Name:  pvviewer-role
+Subjects:
+  Kind            Name      Namespace
+  ----            ----      ---------
+  ServiceAccount  pvviewer  default
+ 
+
+ㅇ pod 생성
+
+# pod 구문 생성
+k run pvviewer --image=redis --dry-run=client -o yaml > pvviewer.yaml
+
+# pod 구문에서 service AccountName 지정
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: pvviewer
+  name: pvviewer
+spec:
+  serviceAccountName: pvviewer
+  containers:
+  - image: redis
+    name: pvviewer
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+# 생성확인
+$ k describe pod pvviewer | grep service
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-fgkxx (ro)
+ 
+
+2. List the InternalIP of all nodes of the cluster. Save the result to a file /root/CKA/node_ips.
+Answer should be in the format: InternalIP of controlplane<space>InternalIP of node01 (in a single line)
+ 
+
+
+ ㅇ kube doc 검색: InternalIP 후에 다시 찾기로 검색하면 샘플 jsonpath를 찾을 수 있다.
+
+
+ 
+
+# 구문 작성 
+$ kubectl get nodes -o jsonpath='{ $.items[*].status.addresses[?(@.type=="InternalIP")].address }' > /root/CKA/node_ips
+
+# 생성확인
+$ cat /root/CKA/node_ips
+192.27.162.12 192.27.162.3
+ 
+
+ 
+
+ 
+
+3. Create a pod called multi-pod with two containers.
+Container 1, name: alpha, image: nginx
+Container 2: name: beta, image: busybox, command: sleep 4800
+
+# 샘플 yaml 생성
+$ k run multi-pod --image=nginx --dry-run=client -o yaml > multipod.yaml
+
+$ cat multipod.yaml 
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: multi-pod
+  name: multi-pod
+spec:
+  containers:
+  - image: nginx
+    name: multi-pod
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+# 구문 편집
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: multi-pod
+  name: multi-pod
+spec:
+  containers:
+  - image: nginx
+    name: alpha
+    env:
+      - name: "name"
+        value: "alpha"
+  - image: busybox
+    name: beta
+    command:
+      - sleep
+      - "4800"
+    env:
+      - name: "name"
+        value: "beta"
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+
+# k apply -f multipod.yaml
+pod/multi-pod created
+ㅇ 생성확인
+
+$ k describe pod multi-pod 
+Name:             multi-pod
+Namespace:        default
+~~~
+Containers:
+  alpha:
+    Container ID:   containerd://e152cac9ff5b7e9659a3c9922e6d146281d64a79e22d2447c58184be3307aa86
+    Image:          nginx
+    Image ID:       docker.io/library/nginx@sha256:af296b188c7b7df99ba960ca614439c99cb7cf252ed7bbc23e90cfda59092305
+    Port:           <none>
+    Host Port:      <none>
+    State:          Running
+      Started:      Sun, 11 Jun 2023 17:59:25 -0400
+    Ready:          True
+~~~
+  beta:
+    Container ID:  containerd://50f78c24859d6627483ebe78b93caa295317776fd2390d8013501d08aface432
+    Image:         busybox
+    Image ID:      docker.io/library/busybox@sha256:6e494387c901caf429c1bf77bd92fb82b33a68c0e19f6d1aa6a3ac8d27a7049d
+    Port:          <none>
+    Host Port:     <none>
+    Command:
+      sleep
+      4800
+    State:          Running
+      Started:      Sun, 11 Jun 2023 17:59:27 -0400
+    Ready:          True
+~~~
+ 
+
+ 
+
+4. Create a Pod called non-root-pod , image: redis:alpine
+runAsUser: 1000
+fsGroup: 2000
+
+# 베이스 yaml 생성
+$ k run non-root-pod --image=redis:alpine -o yaml > non-pod.yaml
+
+
+# kube doc: securifyContext, 샘플구문 획득
+~~~
+spec:
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 3000
+    fsGroup: 2000
+~~~
+
+
+# 완성 yaml 편집
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: non-root-pod
+  name: non-root-pod
+spec:
+  securityContext:
+    runAsUser: 1000
+    fsGroup: 2000
+  containers:
+  - image: redis:alpine
+    name: non-root-pod
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+
+# 생성
+$ k apply -f non-pod.yaml
+pod/non-root-pod created
+
+
+# 생성 확인
+$ k get po non-root-pod -o yaml
+~~~
+  priority: 0
+  restartPolicy: Always
+  schedulerName: default-scheduler
+  securityContext:
+    fsGroup: 2000
+    runAsUser: 1000
+  serviceAccount: default
+  serviceAccountName: default
+  terminationGracePeriodSeconds: 30
+~~~
+ 
+
+5. We have deployed a new pod called np-test-1 and a service called np-test-service. 
+
+Incoming connections to this service are not working. Troubleshoot and fix it.
+Create NetworkPolicy, by the name ingress-to-nptest that allows incoming connections to the service over port 80.
+
+Important: Don't delete any current objects deployed.
+
+ 
+
+# curl 접속 테스트를 위한 pod 생성
+$ k run curl --image=alpine/curl --rm -it -- sh
+
+
+# 접속 테스트 수행
+$$ curl np-test-service
+
+
+# Network Policies 검색, 샘플 구문 확인
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: test-network-policy
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      role: db
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 172.17.0.0/16
+            except:
+              - 172.17.1.0/24
+        - namespaceSelector:
+            matchLabels:
+              project: myproject
+        - podSelector:
+            matchLabels:
+              role: frontend
+      ports:
+        - protocol: TCP
+          port: 6379
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/24
+      ports:
+        - protocol: TCP
+          port: 5978
+
+
+# 구문생성 및 반영
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ingress-to-nptest
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      run: np-test-1
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 80
+          
+$ k apply -f root-pod.yaml 
+pod/non-root-pod created
+ 
+
+# 접속확인, curl용 test pod를 생성하여 curl np-test-service 접속 테스트한다.
+
+$ k run curl --image=alpine/curl --rm -it -- sh
+If you don't see a command prompt, try pressing enter.
+
+/ # curl np-test-service
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+html { color-scheme: light dark; }
+body { width: 35em; margin: 0 auto;
+font-family: Tahoma, Verdana, Arial, sans-serif; }
+</style>
+</head>
+<body>
+<h1>Welcome to nginx!</h1>
+<p>If you see this page, the nginx web server is successfully installed and
+working. Further configuration is required.</p>
+
+<p>For online documentation and support please refer to
+<a href="http://nginx.org/">nginx.org</a>.<br/>
+Commercial support is available at
+<a href="http://nginx.com/">nginx.com</a>.</p>
+
+<p><em>Thank you for using nginx.</em></p>
+</body>
+</html>
+ 
+
+6. Taint the worker node node01 to be Unschedulable. Once done, create a pod called dev-redis, image redis:alpine, to ensure workloads are not scheduled to this worker node. Finally, create a new pod called prod-redis and image: redis:alpine with toleration to be scheduled on node01.
+
+key: env_type, value: production, operator: Equal and effect: NoSchedule
+
+ 
+
+ㅇ 노드에 taint 설정하기
+
+# taint 참조구문 검색
+$ k taint --help
+Update the taints on one or more nodes.
+~~~
+Examples:
+  # Update node 'foo' with a taint with key 'dedicated' and value 'special-user' and effect 'NoSchedule'
+  # If a taint with that key and effect already exists, its value is replaced as specified
+  kubectl taint nodes foo dedicated=special-user:NoSchedule
+  
+  
+# taint 구문생성
+$ kubectl taint nodes node01 env_type=production:NoSchedule
+node/node01 tainted
+
+# taint 생성확인
+$ k describe nodes node01 | grep Taint
+Taints:             env_type=production:NoSchedule
+ 
+
+ㅇ pod 생성
+
+# dev redis 생성
+$ k run dev-redis --image=redis:alpine
+pod/dev-redis created
+
+
+# prod redis 생성을 위한 
+# kubedoc: taint 검색하여 tolerations 예문 확인
+
+tolerations:
+- key: "key1"
+  operator: "Equal"
+  value: "value1"
+  effect: "NoSchedule"
+
+
+# prod redis 생성문
+$ k run prod-redis --image=redis:alpine --dry-run=client -o yaml > redis.yaml
+
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: prod-redis
+  name: prod-redis
+spec:
+  tolerations:
+  - key: "env_type"
+    operator: "Equal"
+    value: "production"
+    effect: "NoSchedule"
+  containers:
+  - image: redis:alpine
+    name: prod-redis
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+
+# 생성
+$ k apply -f redis.yaml 
+pod/prod-redis created
+
+# 확인
+k get po -o wide
+NAME         READY   STATUS    RESTARTS   AGE     IP             NODE           NOMINATED NODE   READINESS GATES
+dev-redis    1/1     Running   0          8m33s   10.244.0.4     controlplane   <none>           <none>
+np-test-1    1/1     Running   0          17m     10.244.192.1   node01         <none>           <none>
+prod-redis   1/1     Running   0          30s     10.244.192.2   node01         <none>           <none>
+ 
+
+ 
+
+7. Create a pod called hr-pod in hr namespace belonging to the production environment and frontend tier .
+image: redis:alpine
+Use appropriate labels and create all the required objects if it does not exist in the system already.
+
+ㅇ hr-pod labeled with environment production?
+ㅇ hr-pod labeled with tier frontend?
+
+# NameSpace 생성
+$ k create ns hr
+namespace/hr created
+
+# 확인
+$ k get ns
+NAME              STATUS   AGE
+default           Active   44m
+hr                Active   3s
+kube-node-lease   Active   44m
+kube-public       Active   44m
+kube-system       Active   44m
+ 
+
+# label 적용한 pod 생성
+$ k run hr-pod -n hr --image=redis:alpine --labels="environment=production,tier=frontend"
+pod/hr-pod created
+
+# 확인
+$ k get po -n hr
+NAME     READY   STATUS    RESTARTS   AGE
+hr-pod   1/1     Running   0          3m43s
+
+$ k describe -n hr pods/hr-pod 
+
+~~~
+Labels:           environment=production
+                  tier=frontend
+ 
+
+ 
+
+8. A kubeconfig file called super.kubeconfig has been created under /root/CKA. 
+
+There is something wrong with the configuration. Troubleshoot and fix it.
+
+ㅇ Fix /root/CKA/super.kubeconfig
+
+$ k get no --kubeconfig /root/CKA/super.kubeconfig
+E0620 17:33:10.877465   14740 memcache.go:265] couldn't get current server API group list: Get "https://controlplane:9999/api?timeout=32s": dial tcp 192.39.104.3:9999: connect: connection refused
+E0620 17:33:10.877877   14740 memcache.go:265] couldn't get current server API group list: Get "https://controlplane:9999/api?timeout=32s": dial tcp 192.39.104.3:9999: connect: connection refused
+E0620 17:33:10.879437   14740 memcache.go:265] couldn't get current server API group list: Get "https://controlplane:9999/api?timeout=32s": dial tcp 192.39.104.3:9999: connect: connection refused
+E0620 17:33:10.880966   14740 memcache.go:265] couldn't get current server API group list: Get "https://controlplane:9999/api?timeout=32s": dial tcp 192.39.104.3:9999: connect: connection refused
+E0620 17:33:10.882455   14740 memcache.go:265] couldn't get current server API group list: Get "https://controlplane:9999/api?timeout=32s": dial tcp 192.39.104.3:9999: connect: connection refused
+The connection to the server controlplane:9999 was refused - did you specify the right host or port?
+
+
+# 설정확인
+$ vi /root/CKA/super.kubeconfig
+
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: LS0t~~~
+    server: https://controlplane:9999
+  name: kubernetes
+  
+
+# kube config 확인
+$ cat .kube/config 
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: LS0t~~~
+    server: https://controlplane:6443
+  name: kubernetes
+  
+  
+# 정상확인
+$ k get no --kubeconfig /root/CKA/super.kubeconfig
+NAME           STATUS   ROLES           AGE   VERSION
+controlplane   Ready    control-plane   68m   v1.27.0
+node01         Ready    <none>          67m   v1.27.0
+ 
+
+9. We have created a new deployment called nginx-deploy. 
+
+scale the deployment to 3 replicas. 
+
+Has the replica's increased? Troubleshoot the issue and fix it.
+
+ㅇ deployment has 3 replicas
+
+ 
+
+$ k describe deployments.apps 
+~~~
+NewReplicaSet:   nginx-deploy-77cd56dff (1/1 replicas created)
+Events:
+  Type    Reason             Age    From                   Message
+  ----    ------             ----   ----                   -------
+  Normal  ScalingReplicaSet  8m14s  deployment-controller  Scaled up replica set nginx-deploy-77cd56dff to 1
+  
+  
+  
+$  k get po -n kube-system 
+NAME                                   READY   STATUS             RESTARTS      AGE
+coredns-5d78c9869d-nhvx8               1/1     Running            0             71m
+kube-contro1ler-manager-controlplane   0/1     ImagePullBackOff   0             2m3s
+kube-proxy-jjv4l                       1/1     Running            0             71m
+
+
+# manifests에서 controller를 확인하여 수정
+$ cd /etc/kubernetes/manifests/
+$ vi kube-controller-manager.yaml 
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    component: kube-contro1ler-manager << 오타 수정
+    tier: control-plane
+  name: kube-contro1ler-manager
+  namespace: kube-system
