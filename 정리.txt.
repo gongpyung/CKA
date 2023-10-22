@@ -1,0 +1,294 @@
+1. Deploy a pod named nginx-pod using the nginx:alpine image
+# 샘플 yaml 생성
+$ kubectl run nginx-pod --image=nginx:alpine --dry-run=client -o yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: nginx-pod
+  name: nginx-pod
+spec:
+  containers:
+  - image: nginx:alpine
+    name: nginx-pod
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+# yaml 파일 저장
+$ kubectl run nginx-pod --image=nginx:alpine --dry-run=client -o yaml > pod.yaml
+
+# apply
+$ kubectl apply -f pod.yaml 
+pod/nginx-pod created
+ 
+
+2. Deploy a messaging pod using the redis:alpine image with the labels set to tier=msg.
+# help를 통한 lable 구문 참조
+$ kubectl run --help
+~~
+  # Start a hazelcast pod and set labels "app=hazelcast" and "env=prod" in the container
+  kubectl run hazelcast --image=hazelcast/hazelcast --labels="app=hazelcast,env=prod"
+~~
+
+$ lable 구문 작성
+$ kubectl run messaging --image=redis:alpine --labels="tier=msg"
+pod/messaging created
+ 
+
+3. Create a namespace named apx-x9984574.
+# create 구문 생성
+# k create namespace apx-x9984574
+namespace/apx-x9984574 created
+ 
+
+4. Get the list of nodes in JSON format and store it in a file at /opt/outputs/nodes-z3444kd9.json.
+$ k get no -o json > /opt/outputs/nodes-z3444kd9.json
+ 
+
+ 
+
+5. Create a service messaging-service to expose the messaging application within the cluster on port 6379
+# pod 확인
+$ k get pods
+
+# service 확인
+$ k get svc
+
+# expose help 참조
+$ kubectl expose --help
+# Create a service for a replicated nginx, which serves on port 80 and connects to the containers on port 8000
+kubectl expose rc nginx --port=80 --target-port=8000
+
+ # expose 구문작성
+ $ kubectl expose messaging --port 6379 --name messaging-service
+ 
+ #적용확인
+  - 서비스 확인
+$ kubectl get svc
+ 
+  - pod 연결확인
+$ kubectl descride svc messaging-service
+~~
+Endpoints: 10.x.x.x:6379
+~~
+
+# 10.x.x.x:6379 IP 동일 체크
+$ kubectl get pods -o wide
+ 
+
+6. Create a deployment named hr-web-app using the image kodekloud/webapp-color with 2 replicas.
+# kube docs 검색: pod replias > deployment 참조
+# replicas 구문 획득(Declarative, 선언적 방식)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  labels:
+    app: nginx
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.14.2
+        ports:
+        - containerPort: 80
+        
+# 구문 작성(Imperative, 명령적 방식)
+$ kubectl create deployment hr-web-app --image=kudekloud/webapp-color --replicas=2
+ 
+
+ 
+
+7. Create a static pod named static-busybox on the controlplane node that uses the busybox image and the command sleep 1000.
+# kube doc 검색: command > Define a Command and Arguments for a Container
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: command-demo
+  labels:
+    purpose: demonstrate-command
+spec:
+  containers:
+  - name: command-demo-container
+    image: debian
+    command: ["printenv"]
+    args: ["HOSTNAME", "KUBERNETES_PORT"]
+  restartPolicy: OnFailure
+
+# doc > Run a command in a shell
+command: ["/bin/sh"]
+args: ["-c", "while true; do echo hello; sleep 10;done"]
+
+# coomand.yaml 완성
+apiVersion: v1
+kind: Pod
+metadata:
+  name: static-busybox
+spec:
+  containers:
+  - name: static-busybox
+    image: busybox
+    command: ["/bin/sh"]
+    args: ["-c", "sleep 1000;"]
+  restartPolicy: OnFailure
+  
+# apply
+$ k apply -f command.yaml
+pod/static-busybox created
+
+
+########################
+# dry-run으로 yaml 획득 방법
+$ k run static-busybox --image=busybox --dry-run=client -o yaml --command -- sleep 1000 > static-busybox.yaml
+$ cat static-busybox.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: static-busybox
+  name: static-busybox
+spec:
+  containers:
+  - command:
+    - sleep
+    - "1000"
+    image: busybox
+    name: static-busybox
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+$ mv static-busybox.yaml /etc/kubernetes/manifests/
+$ kubectl get pods
+ 
+
+8. Create a POD in the finance namespace named temp-bus with the image redis:alpine.
+# -n fi 탭키를 눌러 namespace 존재 확인가능
+$ k get ns
+NAME              STATUS   AGE
+apx-x9984574      Active   30m
+default           Active   89m
+finance           Active   95s
+kube-flannel      Active   89m
+kube-node-lease   Active   89m
+kube-public       Active   89m
+kube-system       Active   89m
+
+# run 구문작성
+$ k run temp-bus --image=redis:alpine -n finance 
+pod/temp-bus created
+ 
+
+ 
+
+9. A new application orange is deployed. There is something wrong with it. Identify and fix the issue.
+# pod log 확인
+$ k logs orange 
+Defaulted container "orange-container" out of: orange-container, init-myservice (init)
+Error from server (BadRequest): container "orange-container" in pod "orange" is waiting to start: PodInitializing
+
+# container log 확인
+$ k logs orange init-myservice
+sh: sleeeep: not found
+
+# PodInitializing에 문제 파악
+$ k get po -o yaml
+~~
+initContainers:
+    - command:
+      - sh
+      - -c
+      - sleeeep 2;
+~~ 
+
+# command 수정
+$ k edit po orange 
+error: pods "orange" is invalid
+A copy of your changes has been stored to "/tmp/kubectl-edit-3112330393.yaml"
+error: Edit cancelled, no valid changes were saved.
+
+# 수정사항 강제 적용
+$ k replace -f /tmp/kubectl-edit-3112330393.yaml --force
+pod "orange" deleted
+pod/orange replaced
+ 
+
+ 
+
+10. Expose the hr-web-app as service hr-web-app-service application 
+on port 30082 on the nodes on the cluster.
+# expose 명령문 작성
+$ k expose deploy hr-web-app --name=hr-web-app-service --type NodePort --port 8080
+service/hr-web-app-service exposed
+
+# svc 확인
+$ k get svc
+
+
+# NodePort port 변경 30082
+$ k edit svc
+ 
+
+ 
+
+11. Use JSON PATH query to retrieve the osImages of all the nodes 
+and store it in a file /opt/outputs/nodes_os_x43kj56.txt.
+# 명령문 참조 참기
+# kube doc cheat
+# Get ExternalIPs of all nodes
+kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="ExternalIP")].address}'
+
+
+# 명령문 작성 및 실행 결과
+$ kubectl get nodes -o jsonpath='{.items[*].status.nodeInfo.osImage}'
+Ubuntu 20.04.2 LTS Ubuntu 20.04.2 LTS
+
+
+# 결과파일 생성
+$ kubectl get nodes -o jsonpath='{.items[*].status.nodeInfo.osImage}' > /opt/outputs/nodes_os_x43kj56.txt.
+ 
+
+ 
+
+12. Create a Persistent Volume with the given specification.
+# kube doc 검색: Persistent Volumes > 오른쪽 index에서 Persistent Volumes 클릭
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv0003
+spec:
+  capacity:
+    storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Recycle
+  storageClassName: slow
+  
+# vi 편집
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-analytics
+spec:
+  capacity:
+    storage: 100Mi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: /pv/data-analytics
